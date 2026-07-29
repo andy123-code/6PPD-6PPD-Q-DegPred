@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Pages Deploy"
+  short_description: "Diagnose and fix GitHub Pages and static deployment issues."
+  default_prompt: "Use this skill to deploy or troubleshoot a static web app on GitHub Pages."
