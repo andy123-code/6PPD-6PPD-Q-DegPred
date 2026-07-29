@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>6PPD / 6PPD-Q DegPred</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #607080;
+      --line: #d7dee6;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --accent: #0f766e;
+      --accent-2: #2563eb;
+      --warn: #a16207;
+      --bad: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    header {
+      padding: 22px 28px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: 0; }
+    h2 { margin: 0 0 14px; font-size: 18px; }
+    p { margin: 0; color: var(--muted); line-height: 1.55; }
+    main {
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+      gap: 16px;
+      padding: 16px;
+    }
+    section, aside {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    label { display: block; font-size: 13px; font-weight: 650; margin: 12px 0 6px; }
+    input, select, textarea, button {
+      font: inherit;
+      border-radius: 6px;
+    }
+    input[type="file"], select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      padding: 9px;
+      background: #fff;
+    }
+    textarea { min-height: 128px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    button {
+      border: 1px solid transparent;
+      background: var(--accent);
+      color: #fff;
+      padding: 9px 12px;
+      cursor: pointer;
+      font-weight: 650;
+    }
+    button.secondary { background: #fff; color: var(--ink); border-color: var(--line); }
+    button.blue { background: var(--accent-2); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .stack { display: grid; gap: 12px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 9px;
+      background: #fff;
+      font-size: 13px;
+      margin: 0 6px 6px 0;
+    }
+    .pill input { margin: 0; }
+    .status {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: 6px;
+      background: #eef6f5;
+      color: #164e46;
+      border: 1px solid #b7d8d3;
+      white-space: pre-line;
+    }
+    .status.warn { background: #fff7ed; color: var(--warn); border-color: #fed7aa; }
+    .status.bad { background: #fff1f2; color: var(--bad); border-color: #fecdd3; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      background: #fff;
+    }
+    th, td {
+      padding: 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th { position: sticky; top: 0; background: #f1f5f9; z-index: 1; }
+    .table-wrap { overflow: auto; max-height: 440px; border: 1px solid var(--line); border-radius: 6px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metric { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fbfdff; }
+    .metric strong { display: block; font-size: 18px; margin-top: 4px; }
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>6PPD / 6PPD-Q 降解预测平台</h1>
+    <p>公开静态版。CSV 数据只在当前浏览器中处理，不上传服务器。适合转发给别人快速训练和预测。</p>
+  </header>
+  <main>
+    <aside class="stack">
+      <section>
+        <h2>1. 上传训练数据</h2>
+        <input id="trainFile" type="file" accept=".csv">
+        <label for="targetCol">目标列</label>
+        <select id="targetCol"></select>
+        <label>特征列</label>
+        <div id="featureCols" class="row"></div>
+        <div class="row" style="margin-top:12px">
+          <button id="trainBtn">训练模型</button>
+          <button id="clearBtn" class="secondary">清空</button>
+        </div>
+        <div id="trainStatus" class="status warn">请上传 CSV。推荐分别使用 6PPD 和 6PPD-Q 的单目标训练数据。</div>
+      </section>
+      <section>
+        <h2>2. 模型保存</h2>
+        <div class="row">
+          <button id="downloadModel" class="blue" disabled>下载模型 JSON</button>
+          <label class="pill" style="margin:0">
+            加载模型
+            <input id="modelFile" type="file" accept=".json" style="display:none">
+          </label>
+        </div>
+        <p class="muted" style="margin-top:10px">静态公开版不会替你长期保存模型。请下载 JSON，下次打开后再加载。</p>
+      </section>
+      <section>
+        <h2>3. 批量预测</h2>
+        <input id="predictFile" type="file" accept=".csv">
+        <div class="row" style="margin-top:12px">
+          <button id="predictBtn" disabled>预测</button>
+          <button id="downloadPred" class="secondary" disabled>下载预测 CSV</button>
+        </div>
+        <div id="predictStatus" class="status warn">先训练或加载模型。</div>
+      </section>
+    </aside>
+    <section class="stack">
+      <div>
+        <h2>模型状态</h2>
+        <div class="metrics">
+          <div class="metric">训练行数<strong id="metricRows">0</strong></div>
+          <div class="metric">特征数<strong id="metricFeatures">0</strong></div>
+          <div class="metric">验证 MAE<strong id="metricMae">-</strong></div>
+        </div>
+      </div>
+      <div>
+        <h2>数据预览 / 预测结果</h2>
+        <div id="tableWrap" class="table-wrap"><table id="dataTable"></table></div>
+      </div>
+      <div>
+        <h2>单条预测</h2>
+        <p class="muted">训练后会自动生成输入模板。填入一行条件后点击预测。</p>
+        <textarea id="singleInput" spellcheck="false"></textarea>
+        <div class="row">
+          <button id="singleBtn" disabled>预测这一行</button>
+        </div>
+        <div id="singleStatus" class="status warn">暂无模型。</div>
+      </div>
+    </section>
+  </main>
+  <script>
+    const state = {
+      trainRows: [],
+      predictRows: [],
+      columns: [],
+      model: null,
+      predictionRows: []
+    };
+    const defaultFeatureNames = ["时间_d","介质","氧化还原条件","温度_C","pH","土壤含水率","Eh_mV","土壤foc","DO_mg_L","光照因子","NOM_mg_L","硝酸盐_mmol_L"];
+    const els = Object.fromEntries([...document.querySelectorAll("[id]")].map(el => [el.id, el]));
+
+    function parseCsv(text) {
+      const rows = [];
+      let row = [], cell = "", quoted = false;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i], next = text[i + 1];
+        if (quoted) {
+          if (ch === '"' && next === '"') { cell += '"'; i++; }
+          else if (ch === '"') quoted = false;
+          else cell += ch;
+        } else {
+          if (ch === '"') quoted = true;
+          else if (ch === ",") { row.push(cell); cell = ""; }
+          else if (ch === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
+          else if (ch !== "\r") cell += ch;
+        }
+      }
+      if (cell || row.length) { row.push(cell); rows.push(row); }
+      const headers = (rows.shift() || []).map(h => h.replace(/^\ufeff/, "").trim());
+      return rows.filter(r => r.some(v => String(v).trim() !== "")).map(r => {
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = (r[i] ?? "").trim());
+        return obj;
+      });
+    }
+    function toCsv(rows) {
+      if (!rows.length) return "";
+      const cols = Object.keys(rows[0]);
+      const esc = v => {
+        const s = String(v ?? "");
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      return [cols.join(","), ...rows.map(r => cols.map(c => esc(r[c])).join(","))].join("\n");
+    }
+    function download(name, text, type = "text/plain") {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([text], { type }));
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+    function num(v) {
+      if (v === null || v === undefined || v === "") return null;
+      const n = Number(String(v).replace(/,/g, ""));
+      return Number.isFinite(n) ? n : null;
+    }
+    function median(values) {
+      const arr = values.filter(Number.isFinite).sort((a, b) => a - b);
+      if (!arr.length) return 0;
+      const m = Math.floor(arr.length / 2);
+      return arr.length % 2 ? arr[m] : (arr[m - 1] + arr[m]) / 2;
+    }
+    function buildEncoders(rows, features) {
+      const enc = {};
+      const stats = {};
+      for (const f of features) {
+        const nums = rows.map(r => num(r[f]));
+        const numeric = nums.filter(v => v !== null).length >= Math.max(3, rows.length * 0.7);
+        if (numeric) {
+          const vals = nums.filter(v => v !== null);
+          stats[f] = { type: "number", fill: median(vals), mean: vals.reduce((a, b) => a + b, 0) / vals.length, sd: 1 };
+          const mean = stats[f].mean;
+          const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, vals.length - 1);
+          stats[f].sd = Math.sqrt(variance) || 1;
+        } else {
+          enc[f] = [...new Set(rows.map(r => String(r[f] || "缺失")))].sort();
+          stats[f] = { type: "category", values: enc[f] };
+        }
+      }
+      return stats;
+    }
+    function vectorize(row, features, stats) {
+      const out = [];
+      for (const f of features) {
+        const s = stats[f];
+        if (s.type === "number") {
+          const v = num(row[f]);
+          out.push(((v === null ? s.fill : v) - s.mean) / s.sd);
+        } else {
+          const value = String(row[f] || "缺失");
+          for (const cat of s.values) out.push(value === cat ? 1 : 0);
+        }
+      }
+      return out;
+    }
+    function predictOne(model, row) {
+      const x = vectorize(row, model.features, model.stats);
+      const distances = model.samples.map((s, idx) => {
+        let d = 0;
+        for (let i = 0; i < x.length; i++) d += (x[i] - s[i]) ** 2;
+        return { idx, d: Math.sqrt(d) };
+      }).sort((a, b) => a.d - b.d).slice(0, model.k);
+      let top = 0, bottom = 0;
+      for (const item of distances) {
+        const w = 1 / (item.d + 1e-9);
+        top += w * model.targets[item.idx];
+        bottom += w;
+      }
+      return Math.max(0, top / bottom);
+    }
+    function renderTable(rows, limit = 60) {
+      const table = els.dataTable;
+      table.innerHTML = "";
+      if (!rows.length) return;
+      const cols = Object.keys(rows[0]);
+      table.insertAdjacentHTML("beforeend", `<thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>`);
+      const body = document.createElement("tbody");
+      rows.slice(0, limit).forEach(r => {
+        const tr = document.createElement("tr");
+        cols.forEach(c => {
+          const td = document.createElement("td");
+          td.textContent = r[c] ?? "";
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+      table.appendChild(body);
+    }
+    function populateColumns() {
+      const cols = state.columns;
+      els.targetCol.innerHTML = "";
+      cols.filter(c => /6PPD|target|浓度|mg|ng|DT50/i.test(c)).forEach(c => {
+        els.targetCol.add(new Option(c, c, false, /6PPD_mg_kg|6PPD_Q_mg_kg/.test(c)));
+      });
+      if (!els.targetCol.options.length) cols.forEach(c => els.targetCol.add(new Option(c, c)));
+      els.featureCols.innerHTML = "";
+      cols.forEach(c => {
+        const checked = defaultFeatureNames.includes(c);
+        if (c === els.targetCol.value) return;
+        const label = document.createElement("label");
+        label.className = "pill";
+        label.innerHTML = `<input type="checkbox" value="${c.replace(/"/g, "&quot;")}" ${checked ? "checked" : ""}> ${c}`;
+        els.featureCols.appendChild(label);
+      });
+    }
+    function selectedFeatures() {
+      return [...els.featureCols.querySelectorAll("input:checked")].map(i => i.value).filter(f => f !== els.targetCol.value);
+    }
+    async function readFile(file) {
+      return await file.text();
+    }
+    els.trainFile.addEventListener("change", async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      state.trainRows = parseCsv(await readFile(file));
+      state.columns = Object.keys(state.trainRows[0] || {});
+      populateColumns();
+      renderTable(state.trainRows);
+      els.trainStatus.className = "status";
+      els.trainStatus.textContent = `已读取 ${state.trainRows.length} 行训练数据。`;
+    });
+    els.targetCol.addEventListener("change", populateColumns);
+    els.trainBtn.addEventListener("click", () => {
+      const target = els.targetCol.value;
+      const features = selectedFeatures();
+      const clean = state.trainRows.filter(r => num(r[target]) !== null);
+      if (!clean.length || !features.length) {
+        els.trainStatus.className = "status bad";
+        els.trainStatus.textContent = "需要至少一个目标列和一个特征列。";
+        return;
+      }
+      const stats = buildEncoders(clean, features);
+      const samples = clean.map(r => vectorize(r, features, stats));
+      const targets = clean.map(r => num(r[target]));
+      const k = Math.min(7, Math.max(3, Math.round(Math.sqrt(clean.length))));
+      const errs = clean.map((r, i) => {
+        const model = { features, stats, samples: samples.filter((_, j) => j !== i), targets: targets.filter((_, j) => j !== i), k };
+        return Math.abs(predictOne(model, r) - targets[i]);
+      });
+      const mae = errs.reduce((a, b) => a + b, 0) / errs.length;
+      state.model = { version: 1, kind: "distance_weighted_knn", target, features, stats, samples, targets, k, rows: clean.length, mae };
+      els.metricRows.textContent = clean.length;
+      els.metricFeatures.textContent = features.length;
+      els.metricMae.textContent = mae.toPrecision(4);
+      els.downloadModel.disabled = false;
+      els.predictBtn.disabled = false;
+      els.singleBtn.disabled = false;
+      els.singleInput.value = JSON.stringify(Object.fromEntries(features.map(f => [f, clean[0][f] ?? ""])), null, 2);
+      els.trainStatus.className = "status";
+      els.trainStatus.textContent = `训练完成。\n模型：距离加权 KNN 回归\n目标列：${target}\n留一验证 MAE：${mae.toPrecision(4)}`;
+      els.singleStatus.className = "status warn";
+      els.singleStatus.textContent = "可以输入一行 JSON 条件进行预测。";
+    });
+    els.downloadModel.addEventListener("click", () => download("degpred_model.json", JSON.stringify(state.model, null, 2), "application/json"));
+    els.modelFile.addEventListener("change", async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      state.model = JSON.parse(await readFile(file));
+      els.metricRows.textContent = state.model.rows;
+      els.metricFeatures.textContent = state.model.features.length;
+      els.metricMae.textContent = Number(state.model.mae).toPrecision(4);
+      els.downloadModel.disabled = false;
+      els.predictBtn.disabled = false;
+      els.singleBtn.disabled = false;
+      els.singleInput.value = JSON.stringify(Object.fromEntries(state.model.features.map(f => [f, ""])), null, 2);
+      els.predictStatus.className = "status";
+      els.predictStatus.textContent = `已加载模型，目标列：${state.model.target}`;
+    });
+    els.predictFile.addEventListener("change", async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      state.predictRows = parseCsv(await readFile(file));
+      renderTable(state.predictRows);
+      els.predictStatus.className = "status";
+      els.predictStatus.textContent = `已读取 ${state.predictRows.length} 行待预测数据。`;
+    });
+    els.predictBtn.addEventListener("click", () => {
+      if (!state.model || !state.predictRows.length) return;
+      const outCol = `预测_${state.model.target}`;
+      state.predictionRows = state.predictRows.map(r => ({ ...r, [outCol]: predictOne(state.model, r).toFixed(6) }));
+      renderTable(state.predictionRows);
+      els.downloadPred.disabled = false;
+      els.predictStatus.className = "status";
+      els.predictStatus.textContent = `预测完成：${state.predictionRows.length} 行。`;
+    });
+    els.downloadPred.addEventListener("click", () => download("degpred_predictions.csv", "\ufeff" + toCsv(state.predictionRows), "text/csv;charset=utf-8"));
+    els.singleBtn.addEventListener("click", () => {
+      try {
+        const row = JSON.parse(els.singleInput.value);
+        const y = predictOne(state.model, row);
+        els.singleStatus.className = "status";
+        els.singleStatus.textContent = `${state.model.target} = ${y.toFixed(6)}`;
+      } catch (err) {
+        els.singleStatus.className = "status bad";
+        els.singleStatus.textContent = `输入不是有效 JSON：${err.message}`;
+      }
+    });
+    els.clearBtn.addEventListener("click", () => location.reload());
+  </script>
+</body>
+</html>
