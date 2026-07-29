@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.venv/
+venv/
+.vscode/
+degradation_data_template_predicted.csv
+trained_model/model.pkl
+.streamlit/secrets.toml
