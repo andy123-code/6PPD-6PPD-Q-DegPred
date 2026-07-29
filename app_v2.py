@@ -2,6 +2,7 @@
 
 import io
 import pickle
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -16,8 +17,44 @@ st.set_page_config(page_title="6PPD 降解预测平台", layout="wide")
 plt.rcParams["font.sans-serif"] = ["Arial Unicode MS", "SimHei", "DejaVu Sans"]
 plt.rcParams["axes.unicode_minus"] = False
 
-for key in ("training_data", "bundle", "prediction_result"):
+BASE_DIR = Path(__file__).resolve().parent
+WORKSPACE_DIR = BASE_DIR / "saved_workspace"
+TRAINING_DATA_PATH = WORKSPACE_DIR / "latest_training_data.csv"
+MODEL_PATH = WORKSPACE_DIR / "latest_model.pkl"
+COMPARISON_PATH = WORKSPACE_DIR / "latest_model_comparison.csv"
+
+for key in ("training_data", "bundle", "prediction_result", "comparison"):
     st.session_state.setdefault(key, None)
+
+
+def save_training_data(data: pd.DataFrame) -> None:
+    WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+    data.to_csv(TRAINING_DATA_PATH, index=False, encoding="utf-8-sig")
+
+
+def save_model_bundle(bundle: dict, comparison: pd.DataFrame) -> None:
+    WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+    with MODEL_PATH.open("wb") as file_handle:
+        pickle.dump(bundle, file_handle)
+    comparison.to_csv(COMPARISON_PATH, index=False, encoding="utf-8-sig")
+
+
+def load_saved_workspace() -> None:
+    if st.session_state.training_data is None and TRAINING_DATA_PATH.exists():
+        st.session_state.training_data = pd.read_csv(TRAINING_DATA_PATH)
+    if st.session_state.bundle is None and MODEL_PATH.exists():
+        with MODEL_PATH.open("rb") as file_handle:
+            st.session_state.bundle = pickle.load(file_handle)
+    if st.session_state.comparison is None and COMPARISON_PATH.exists():
+        st.session_state.comparison = pd.read_csv(COMPARISON_PATH)
+
+
+def clear_saved_workspace() -> None:
+    for path in (TRAINING_DATA_PATH, MODEL_PATH, COMPARISON_PATH):
+        if path.exists():
+            path.unlink()
+    for key in ("training_data", "bundle", "prediction_result", "comparison"):
+        st.session_state[key] = None
 
 
 def download_csv(data: pd.DataFrame, name: str) -> None:
@@ -26,8 +63,27 @@ def download_csv(data: pd.DataFrame, name: str) -> None:
     st.download_button("下载 CSV", buffer.getvalue(), name, "text/csv")
 
 
+load_saved_workspace()
+
 st.title("6PPD / 6PPD-Q 土壤与水体降解预测")
 st.caption("条件化机理模拟 + 分组交叉验证的实验数据模型。模型输出必须结合独立批次验证解释。")
+
+with st.sidebar:
+    st.header("本地记忆")
+    if st.session_state.training_data is not None:
+        st.write(f"训练数据：{len(st.session_state.training_data)} 行")
+    else:
+        st.write("训练数据：未保存")
+    if st.session_state.bundle is not None:
+        metrics = st.session_state.bundle.get("metrics", {})
+        st.write(f"模型：{metrics.get('模型', '已保存')}")
+        if "CV_R2_均值" in metrics:
+            st.write(f"CV R²：{metrics['CV_R2_均值']:.4f}")
+    else:
+        st.write("模型：未保存")
+    if st.button("清除本地记忆"):
+        clear_saved_workspace()
+        st.rerun()
 
 tabs = st.tabs(["1. 数据与训练", "2. 批量预测", "3. 动态机理模拟"])
 
@@ -35,6 +91,8 @@ with tabs[0]:
     uploaded_data = st.file_uploader("上传实验 CSV", type="csv")
     if uploaded_data is not None:
         st.session_state.training_data = pd.read_csv(uploaded_data)
+        save_training_data(st.session_state.training_data)
+        st.success("训练数据已保存到本地，下次打开会自动恢复。")
     data = st.session_state.training_data
     if data is None:
         st.info("请使用 degradation_data_template.csv 作为字段模板。每一行应为一个培养瓶/地点在一个时间点的观测。")
@@ -59,13 +117,19 @@ with tabs[0]:
                         "group_col": None if group_column == "(无)" else group_column,
                     })
                     st.session_state.bundle = bundle
+                    st.session_state.comparison = comparison
+                    save_model_bundle(bundle, comparison)
                     st.success(f"最佳模型：{bundle['metrics']['模型']}；CV R² = {bundle['metrics']['CV_R2_均值']:.4f}")
+                    st.info("训练结果和模型已保存到本地，下次打开会自动恢复。")
                     st.dataframe(comparison.round(4), use_container_width=True)
                     model_buffer = io.BytesIO()
                     pickle.dump(bundle, model_buffer)
                     st.download_button("下载训练模型", model_buffer.getvalue(), "degradation_model.pkl", "application/octet-stream")
                 except (KeyError, ValueError) as error:
                     st.error(str(error))
+        elif st.session_state.comparison is not None:
+            st.subheader("上次训练结果")
+            st.dataframe(st.session_state.comparison.round(4), use_container_width=True)
 
 with tabs[1]:
     bundle = st.session_state.bundle

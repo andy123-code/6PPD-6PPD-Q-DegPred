@@ -6,4 +6,5 @@ venv/
 .vscode/
 degradation_data_template_predicted.csv
 trained_model/model.pkl
+saved_workspace/
 .streamlit/secrets.toml
