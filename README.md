@@ -1,5 +1,11 @@
 # 6PPD/6PPD-Q 降解预测平台
 
+公开网页版入口：
+
+https://andy123-code.github.io/6PPD-6PPD-Q-DegPred/index.html
+
+如果 GitHub Pages 显示的是本文档，请强制刷新或点击上面的公开网页版入口。
+
 该版本将机理模拟和实验数据驱动模型分开：`degradation_model.py` 用于生成条件化动力学基线，`train.py` 用实验 CSV 训练预测模型，`predict.py` 用已训练模型批量预测。
 
 ## 准备数据
