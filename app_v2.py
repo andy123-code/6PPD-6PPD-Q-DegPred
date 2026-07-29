@@ -22,7 +22,11 @@ WORKSPACE_DIR = BASE_DIR / "saved_workspace"
 TRAINING_DATA_PATH = WORKSPACE_DIR / "latest_training_data.csv"
 MODEL_PATH = WORKSPACE_DIR / "latest_model.pkl"
 COMPARISON_PATH = WORKSPACE_DIR / "latest_model_comparison.csv"
-LOCAL_PERSISTENCE = st.context.headers.get("host", "").startswith(("localhost", "127.0.0.1"))
+try:
+    REQUEST_HOST = st.context.headers.get("host", "")
+except AttributeError:
+    REQUEST_HOST = ""
+LOCAL_PERSISTENCE = REQUEST_HOST.startswith(("localhost", "127.0.0.1"))
 
 for key in ("training_data", "bundle", "prediction_result", "comparison"):
     st.session_state.setdefault(key, None)
